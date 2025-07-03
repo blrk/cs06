@@ -1,0 +1,7 @@
+# Corrected drain3.yml
+max_clusters: 10000
+max_children: 100
+similarity_threshold: 0.4
+depth: 4
+extra_delimiters: ":_=()"
+parametrize_template: True

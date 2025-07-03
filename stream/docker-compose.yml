@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  streamapp: 
+    build:
+      context: .
+    depends_on:
+      - kafka
+    ports:
+      - "5000:5000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      LOG_SOURCE_DIR: /app/logs-data
+      KAFKA_TOPIC: logs
+      FILE_LIST_PATH: /app/file_list.txt
+    command: gunicorn big.streamapp.wsgi:app --bind 0.0.0.0:5000 --workers 2
+    #volumes:
+      #- $HOME/cs06/logs-data:/app/logs-data          
+      

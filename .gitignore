@@ -1,0 +1,5 @@
+log_*
+log.*
+.ipynb_checkpoints
+.tar
+.tar.*
