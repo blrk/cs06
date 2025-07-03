@@ -1,27 +1,52 @@
+import os
+import time
+from kafka import KafkaAdminClient
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import expr
 
-spark = SparkSession.builder \
-    .appName("KafkaLogConsumer") \
-    .getOrCreate()
+# Wait for at least one topic to be available in Kafka
+def wait_for_kafka_topic(bootstrap_servers, timeout_sec=300):
+    print("⏳ Waiting for any Kafka topic to be available...")
+    start_time = time.time()
 
-# Replace with your Kafka broker name inside Docker network
-kafka_bootstrap_servers = "kafka:9092"
+    while True:
+        try:
+            admin = KafkaAdminClient(bootstrap_servers=bootstrap_servers, client_id='spark-waiter')
+            topics = admin.list_topics()
+            if topics:
+                print(f"✅ Found topic(s): {topics}")
+                return topics[0]  # Use the first available topic
+        except Exception as e:
+            print(f"⚠️ Kafka not ready yet: {e}")
 
-df = spark.readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", kafka_bootstrap_servers) \
-    .option("subscribe", "logs") \
-    .option("startingOffsets", "latest") \
+        if time.time() - start_time > timeout_sec:
+            raise TimeoutError("⛔ Timed out waiting for Kafka topics.")
+        
+        time.sleep(5)
+
+# Setup
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+topic = wait_for_kafka_topic(KAFKA_BOOTSTRAP_SERVERS)
+
+# Start Spark session
+spark = SparkSession.builder.appName("KafkaSparkConsumer").getOrCreate()
+
+# Read from Kafka
+df = (
+    spark.readStream.format("kafka")
+    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+    .option("subscribe", topic)
     .load()
+)
 
-# Convert value from binary to string
-logs_df = df.selectExpr("CAST(value AS STRING) as log_line")
+# Decode and process
+df_parsed = df.selectExpr("CAST(value AS STRING)")
 
-# Print to console (or write to DB or file)
-query = logs_df.writeStream \
-    .outputMode("append") \
-    .format("console") \
+# Write to console
+query = (
+    df_parsed.writeStream
+    .outputMode("append")
+    .format("console")
     .start()
+)
 
 query.awaitTermination()

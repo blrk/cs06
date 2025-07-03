@@ -44,24 +44,30 @@ services:
     networks:
       - kafka-net
 
-  spark-kafka-consumer:
-    build:
-      context: ./spark
-    depends_on:
-      - kafka
-      - spark-master
-    networks:
-      - kafka-net
-
   streamapp:
     build:
       context: ./stream/
     ports:
       - "5000:5000"
     depends_on:
-      - kafka
+      - kafka-init
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - kafka-net
+  
+  spark-kafka-consumer:
+    build:
+      context: ./spark
+    depends_on:
+      streamapp:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - kafka-net  
 
 networks:
   kafka-net:
