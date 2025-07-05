@@ -3,6 +3,7 @@ version: '3.8'
 services:
   zookeeper:
     image: bitnami/zookeeper:3.8
+    container_name: zookeeper
     ports:
       - "2181:2181"
     environment:
@@ -12,6 +13,7 @@ services:
 
   kafka:
     image: bitnami/kafka:3.4
+    container_name: kafka-cluster
     ports:
       - "9092:9092"
     environment:
@@ -27,6 +29,7 @@ services:
 
   spark-master:
     image: bitnami/spark:3.4
+    container_name: spark-master
     environment:
       - SPARK_MODE=master
     ports:
@@ -36,6 +39,7 @@ services:
 
   spark-worker:
     image: bitnami/spark:3.4
+    container_name: spark-worker
     depends_on:
       - spark-master
     environment:
@@ -47,27 +51,57 @@ services:
   streamapp:
     build:
       context: ./stream/
+    container_name: streamapp
     ports:
       - "5000:5000"
     depends_on:
-      - kafka-init
+      - kafka
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
     networks:
       - kafka-net
   
   spark-kafka-consumer:
     build:
       context: ./spark
+    container_name: kafaka-consumer
     depends_on:
       streamapp:
         condition: service_healthy
     restart: on-failure
     networks:
       - kafka-net  
+  
+  elasticsearch:
+    build: ./elastic-search
+    container_name: elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+    volumes:
+      - esdata:/opt/elasticsearch/data
+      - eslogs:/opt/elasticsearch/logs
+  
+  grafana:
+    build: ./grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./datasource.yaml:/usr/share/grafana/conf/provisioning/datasources/datasource.yaml
+    depends_on:
+      - elasticsearch
+
+volumes:
+  esdata:
+  eslogs:  
+  grafana-storage:
 
 networks:
   kafka-net:

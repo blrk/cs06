@@ -1,0 +1,15 @@
+cluster.name: "custom-docker-cluster"
+node.name: "es-node-1"
+network.host: 0.0.0.0
+http.port: 9200
+discovery.type: single-node
+
+# Disable xpack security for dev mode
+# No login no RBAC defined
+xpack.security.enabled: false
+# monitor elastic search nodes resource utlization
+xpack.monitoring.collection.enabled: true
+
+# Paths (these can also be bound via volume)
+path.data: /opt/elasticsearch/data
+path.logs: /opt/elasticsearch/logs

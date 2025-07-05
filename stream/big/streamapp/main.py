@@ -42,6 +42,11 @@ def create_app():
 
     return app
 
+    @app.route("/health")
+    def health():
+        return "OK", 200
+
+
     
 
     
