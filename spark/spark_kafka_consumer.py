@@ -1,83 +1,88 @@
 import os
 import time
-from kafka import KafkaAdminClient
+import re
+import joblib
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import udf
+from pyspark.sql.types import StringType, IntegerType
 
-# Load model & vectorizer only once
-loaded_model = joblib.load("isolation_forest_model.pkl")
-vectorizer = joblib.load("vectorizer.pkl")  
-
-# Configuration
+# --------------------------
+# Configurations
+# --------------------------
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-TOPIC_NAME = "apache-log"  # Update to your topic name
+TOPIC_NAME = "apache-log"  # Static topic
+MODEL_PATH = "/opt/bitnami/spark/app/isolation_forest_model.pkl"
+VECTORIZER_PATH = "/opt/bitnami/spark/app/vectorizer.pkl"
+ELASTICSEARCH_HOST = os.getenv("ELASTICSEARCH_HOST", "http://elasticsearch:9200")
+ELASTIC_INDEX = "log-anomalies"
 
-# Preprocess the log string from the stream 
+# --------------------------
+# Load model and vectorizer
+# --------------------------
+loaded_model = joblib.load(MODEL_PATH)
+vectorizer = joblib.load(VECTORIZER_PATH)
+
+# --------------------------
+# Preprocess & Predict
+# --------------------------
 def preprocess_text(text):
     text = text.lower()
-    text = re.sub(r'\[.*?\]', '', text)  # remove text in brackets
-    text = re.sub(r'\W', ' ', text)  # remove non-alphanumeric characters
-    text = re.sub(r'\s+', ' ', text)  # remove extra spaces
+    text = re.sub(r'\[.*?\]', '', text)
+    text = re.sub(r'\W', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
     return text
 
-def predict_anomaly(new_texts):
-    clean_texts = [preprocess_text(str(t)) for t in new_texts]
-    X_new = vectorizer.transform(clean_texts).toarray()
-    return loaded_model.predict(X_new)
+def predict_anomaly_udf(text):
+    try:
+        clean = preprocess_text(text)
+        vec = vectorizer.transform([clean]).toarray()
+        pred = loaded_model.predict(vec)
+        return int(pred[0])
+    except Exception as e:
+        return -99  # Use -99 for errors
 
-# Wait for topic to be available
-def wait_for_specific_topic(bootstrap_servers, target_topic, timeout_sec=300):
-    print(f"⏳ Waiting for topic '{target_topic}' to be available...")
-    start_time = time.time()
-    while True:
-        try:
-            admin = KafkaAdminClient(
-                bootstrap_servers=bootstrap_servers,
-                client_id='spark-topic-checker'
-            )
-            topics = admin.list_topics()
-            if target_topic in topics:
-                print(f"✅ Found Kafka topic: {target_topic}")
-                return
-            else:
-                print(f"⏳ Topic '{target_topic}' not found yet...")
-        except Exception as e:
-            print(f"⚠️ Kafka not ready yet: {e}")
-        
-        if time.time() - start_time > timeout_sec:
-            raise TimeoutError(f"⛔ Timed out waiting for topic: {target_topic}")
-        time.sleep(5)
+# Register as UDF
+predict_anomaly = udf(predict_anomaly_udf, IntegerType())
 
-wait_for_specific_topic(KAFKA_BOOTSTRAP_SERVERS, TOPIC_NAME)
-
+# --------------------------
 # Start Spark session
+# --------------------------
 spark = SparkSession.builder \
-    .appName("KafkaSparkConsumer") \
+    .appName("KafkaSparkAnomalyDetection") \
+    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0") \
+    .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
     .getOrCreate()
 
-# Read from Kafka topic with trigger limit
+# --------------------------
+# Read from Kafka topic
+# --------------------------
 df = (
     spark.readStream
     .format("kafka")
     .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
     .option("subscribe", TOPIC_NAME)
-    .option("startingOffsets", "earliest")              # Optional: read from beginning
-    .option("maxOffsetsPerTrigger", 5000)               # Limit each batch to 5000 messages can be changed 
+    .option("startingOffsets", "earliest")
+    .option("maxOffsetsPerTrigger", 5000)
     .load()
 )
 
-# Decode Kafka message value (logs)
-df_parsed = df.selectExpr("CAST(value AS STRING)")
-clean_texts = [preprocess_text(str(t)) for t in new_texts] # call the pre proicess
-# Transform using the existing vectorizer
-X_new = vectorizer.transform(clean_texts).toarray()
-return loaded_model.predict(X_new)
+df_parsed = df.selectExpr("CAST(value AS STRING) as log_line")
 
+# --------------------------
+# Predict anomalies
+# --------------------------
+df_with_anomaly = df_parsed.withColumn("anomaly", predict_anomaly(df_parsed["log_line"]))
 
-# Write logs to console
+# --------------------------
+# Write to Elasticsearch
+# --------------------------
 query = (
-    df_parsed.writeStream
+    df_with_anomaly.writeStream
     .outputMode("append")
-    .format("console")
+    .format("org.elasticsearch.spark.sql")
+    .option("checkpointLocation", "/tmp/checkpoints/es")
+    .option("es.nodes", ELASTICSEARCH_HOST)
+    .option("es.resource", f"{ELASTIC_INDEX}/_doc")
     .start()
 )
 
