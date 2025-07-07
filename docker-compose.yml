@@ -13,7 +13,8 @@ services:
 
   kafka:
     image: bitnami/kafka:3.4
-    container_name: kafka-cluster
+    container_name: kafka
+    hostname: kafka  
     ports:
       - "9092:9092"
     environment:
@@ -60,8 +61,7 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 20s
+      retries: 5
     networks:
       - kafka-net
   
@@ -75,6 +75,7 @@ services:
     restart: on-failure
     networks:
       - kafka-net  
+    command: ["/bin/bash", "-c", "sleep 30Thanks  && /opt/bitnami/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.elasticsearch:elasticsearch-spark-30_2.12:8.18.3 /opt/bitnami/spark/app/spark_kafka_consumer.py"]
   
   elasticsearch:
     build: ./elastic-search
@@ -86,6 +87,8 @@ services:
     volumes:
       - esdata:/opt/elasticsearch/data
       - eslogs:/opt/elasticsearch/logs
+    networks:
+      - kafka-net
   
   grafana:
     build: ./grafana
@@ -97,6 +100,8 @@ services:
       - ./datasource.yaml:/usr/share/grafana/conf/provisioning/datasources/datasource.yaml
     depends_on:
       - elasticsearch
+    networks:
+      - kafka-net
 
 volumes:
   esdata:

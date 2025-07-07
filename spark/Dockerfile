@@ -19,13 +19,13 @@ WORKDIR /opt/bitnami/spark/app
 # Copy Kafka consumer script into the container
 COPY spark_kafka_consumer.py .
 
-# Copy the ML model 
-COPY isolation_forest_model.pkl count_vectorizer.pkl
+# Copy the ML model '/opt/bitnami/spark/app/isolation_forest_model.pkl
+COPY isolation_forest_model.pkl count_vectorizer.pkl .
 
 # Set environment variable for Spark app
 ENV SPARK_APPLICATION_PYTHON_FILE=spark_kafka_consumer.py
 
 # Default command to run the Spark Kafka consumer
 CMD [ "/opt/bitnami/spark/bin/spark-submit", \
-      "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0", \
+      "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.elasticsearch:elasticsearch-spark-30_2.12:8.18.3", \
       "/opt/bitnami/spark/app/spark_kafka_consumer.py" ]
