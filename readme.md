@@ -38,16 +38,12 @@ curl -X GET "http://localhost:9200/log-anomalies/_search?pretty&size=100&sort=ev
 ```bash
 curl -X GET "http://localhost:9200/log-anomalies/_search?pretty" -H 'Content-Type: application/json' -d'
 {
-  "size": 100,
-  "sort": [{"event_timestamp": "desc"}],
-  "script_fields": {
-    "timestamp_as_date": {
-      "script": {
-        "source": "Instant.ofEpochMilli(doc['event_timestamp'].value).atZone(ZoneId.of('UTC')).format(DateTimeFormatter.ISO_DATE_TIME)",
-        "lang": "painless"
-      }
+  "query": {
+    "term": {
+      "anomaly": -1
     }
-  }
+  },
+  "size": 100
 }'
 ```
 
