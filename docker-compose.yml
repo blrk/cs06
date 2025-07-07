@@ -75,7 +75,7 @@ services:
     restart: on-failure
     networks:
       - kafka-net  
-    command: ["/bin/bash", "-c", "sleep 30Thanks  && /opt/bitnami/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.elasticsearch:elasticsearch-spark-30_2.12:8.18.3 /opt/bitnami/spark/app/spark_kafka_consumer.py"]
+    command: ["/bin/bash", "-c", "sleep 30  && /opt/bitnami/spark/bin/spark-submit --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.elasticsearch:elasticsearch-spark-30_2.12:8.18.3 /opt/bitnami/spark/app/spark_kafka_consumer.py"]
   
   elasticsearch:
     build: ./elastic-search

@@ -3,9 +3,14 @@ import time
 import re
 import joblib
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf
+from pyspark.sql.functions import udf, regexp_extract, col, to_timestamp, date_format, trim
 from pyspark.sql.types import StringType, StructType, StructField, DoubleType
-
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import nltk
+from sklearn.feature_extraction.text import CountVectorizer
+from nltk.corpus import stopwords
 # --------------------------
 # Configurations
 # --------------------------
@@ -45,7 +50,6 @@ def predict_anomaly_struct(log_line):
 # --------------------------
 # Register UDF with StructType
 # --------------------------
-from pyspark.sql.types import StructType, StructField
 
 schema = StructType([
     StructField("anomaly", DoubleType(), True),
@@ -71,41 +75,85 @@ df = (
     .format("kafka")
     .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
     .option("subscribe", TOPIC_NAME)
-    .option("startingOffsets", "earliest")    # <-- ADDED THE DOT HERE
+    .option("startingOffsets", "earliest")  
     .load()
 )
 
 df_parsed = df.selectExpr("CAST(value AS STRING) as log_line")
 
-# --------------------------
-# Apply UDF to get predictions
-# --------------------------
-df_with_pred = df_parsed.withColumn("prediction", predict_anomaly("log_line"))
+# Pattern to extract timestamp
+timestamp_pattern = r"\[([A-Za-z]{3} [A-Za-z]{3} \d{2} \d{2}:\d{2}:\d{2} \d{4})\]"
+# Pattern to extract the rest of the log after the timestamp
+message_pattern = r"\[[A-Za-z]{3} [A-Za-z]{3} \d{2} \d{2}:\d{2}:\d{2} \d{4}\]\s*(.*)"
+# Apply regexp_extract
+df_extracted = df_parsed \
+    .withColumn("timestamp_str", regexp_extract(col("log_line"), timestamp_pattern, 1)) \
+    .withColumn("message", regexp_extract(col("log_line"), message_pattern, 1))
+# Date format
+apache_date_format = "EEE MMM dd HH:mm:ss yyyy"
+#Convert the extracted string to a timestamp
+#df_extracted = df_extracted.withColumn(
+#    "event_timestamp", to_timestamp(col("timestamp"), to_timestamp(trim(col("timestamp_str")), apache_date_format)
+#).drop("timestamp") # Drop the temporary string column
+spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
+
+df_with_timestamp_and_message = df_extracted.withColumn(
+    "event_timestamp", to_timestamp(trim(col("timestamp_str")), apache_date_format)
+).drop("timestamp_str")
+
+#df_extracted = df_extracted.withColumn( "timestamp_parsed", to_timestamp("timestamp", "EEE MMM dd HH:mm:ss yyyy") )
+#df_extracted = df_extracted.drop("timestamp")
+#print("Time stamp caste and removed")
+#df_extracted.columns
+# Show results
+#df_extracted.select("timestamp", "message").show(truncate=False)
+
+#df_with_pred = df_extracted.withColumn("prediction", predict_anomaly("message"))
+df_with_pred = df_with_timestamp_and_message.withColumn("prediction", predict_anomaly("message"))
 
 # --------------------------
 # Flatten struct fields
 # --------------------------
 df_final = df_with_pred.select(
-    "log_line",
-    "prediction.anomaly",
-    "prediction.anomaly_score"
+    "event_timestamp",          # The parsed timestamp (TimestampType)
+    "message",                  # The extracted log message text
+    "prediction.anomaly",       # The anomaly label from the prediction struct
+    "prediction.anomaly_score"  # The anomaly score from the prediction struct
 )
+
+#df_final = df_with_pred.select(
+#    "message",
+#    "prediction.anomaly",
+#    "prediction.anomaly_score"
+#)
+# df_final = df_final.withColumn("timestamp", df_extracted["timestamp"])
+# Add this before writing to Elasticsearch
+df_final = df_final.withColumn(
+    "event_timestamp", 
+    col("event_timestamp").cast("timestamp")  # Ensure it's a timestamp type
+)
+# Then add explicit mapping for Elasticsearch
+es_write_conf = {
+    "es.mapping.timestamp": "event_timestamp",
+    "es.mapping.date.format": "strict_date_optional_time||epoch_millis"
+}
 
 # --------------------------
 # Write to Elasticsearch
 # --------------------------
 query = (
-    df_final.writeStream # Ensure writing df_final now
+    df_final.writeStream
     .outputMode("append")
     .format("org.elasticsearch.spark.sql")
     .option("checkpointLocation", "/tmp/checkpoints/es")
     .option("es.nodes", ELASTICSEARCH_HOST.replace("http://", "").replace("https://", ""))
     .option("es.port", "9200")
-    .option("es.resource", ELASTIC_INDEX) # <-- THIS IS THE CORRECT LINE: NO TRAILING SLASH OR /_doc
+    .option("es.resource", ELASTIC_INDEX)
+    .options(**es_write_conf)  # Add the mapping config
     .start()
 )
 #query = (
-#    df_parsed.writeStream 
+#    df_final.writeStream 
 #    .outputMode("append")
 #    .format("console")
 #    .option("truncate", "false")
