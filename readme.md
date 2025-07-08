@@ -1,6 +1,7 @@
 ####
 * Bring the cluster up 
 ```bash
+docker compose down --rmi all --volumes --remove-orphans
 docker-compose down && docker-compose up --build -d
 ```
 ### Stream app apis

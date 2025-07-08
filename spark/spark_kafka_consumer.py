@@ -3,7 +3,7 @@ import time
 import re
 import joblib
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, regexp_extract, col, to_timestamp, date_format, trim
+from pyspark.sql.functions import udf, regexp_extract, col, to_timestamp, date_format, trim, unix_timestamp
 from pyspark.sql.types import StringType, StructType, StructField, DoubleType
 import pandas as pd
 import numpy as np
@@ -11,6 +11,7 @@ from datetime import datetime
 import nltk
 from sklearn.feature_extraction.text import CountVectorizer
 from nltk.corpus import stopwords
+
 # --------------------------
 # Configurations
 # --------------------------
@@ -97,8 +98,12 @@ apache_date_format = "EEE MMM dd HH:mm:ss yyyy"
 #).drop("timestamp") # Drop the temporary string column
 spark.conf.set("spark.sql.legacy.timeParserPolicy", "LEGACY")
 
+#df_with_timestamp_and_message = df_extracted.withColumn(
+#    "event_timestamp", to_timestamp(trim(col("timestamp_str")), apache_date_format)
+#).drop("timestamp_str")
 df_with_timestamp_and_message = df_extracted.withColumn(
-    "event_timestamp", to_timestamp(trim(col("timestamp_str")), apache_date_format)
+    "event_timestamp", 
+    to_timestamp(trim(col("timestamp_str")), apache_date_format)
 ).drop("timestamp_str")
 
 #df_extracted = df_extracted.withColumn( "timestamp_parsed", to_timestamp("timestamp", "EEE MMM dd HH:mm:ss yyyy") )
@@ -149,9 +154,10 @@ query = (
     .option("es.nodes", ELASTICSEARCH_HOST.replace("http://", "").replace("https://", ""))
     .option("es.port", "9200")
     .option("es.resource", ELASTIC_INDEX)
-    .options(**es_write_conf)  # Add the mapping config
+    .option("es.mapping.date.rich", "false")  # Important for proper date handling
     .start()
 )
+
 #query = (
 #    df_final.writeStream 
 #    .outputMode("append")

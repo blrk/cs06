@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-time Anomaly Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        .stats { background-color: #f0f0f0; padding: 10px; border-radius: 5px; }
+        .chart { height: 45vh; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        .refresh { margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Real-time Anomaly Dashboard</h1>
+        <div class="stats">
+            <div>Detected Anomalies: <strong>{{ anomaly_count }}</strong></div>
+            <div>Last Updated: {{ last_update }}</div>
+        </div>
+    </div>
+
+    <div id="timeSeriesChart" class="chart"></div>
+    <div id="messagesChart" class="chart"></div>
+    
+    <div class="refresh">
+        <button onclick="location.reload()">Refresh Now</button>
+        <span>Auto-refreshing in <span id="countdown">30</span> seconds</span>
+    </div>
+
+    <script>
+        // Render Plotly charts
+        var timeSeriesData = {{ time_series | safe }};
+        Plotly.newPlot('timeSeriesChart', timeSeriesData);
+        
+        var messagesData = {{ messages_chart | safe }};
+        Plotly.newPlot('messagesChart', messagesData);
+        
+        // Auto-refresh logic
+        var seconds = 30;
+        function countdown() {
+            seconds--;
+            document.getElementById('countdown').textContent = seconds;
+            if (seconds <= 0) {
+                location.reload();
+            }
+        }
+        setInterval(countdown, 1000);
+    </script>
+</body>
+</html>
