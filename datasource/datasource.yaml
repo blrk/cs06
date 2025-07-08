@@ -1,0 +1,17 @@
+# datasource.yaml
+apiVersion: 1
+
+datasources:
+  - name: Elasticsearch-Logs
+    type: elasticsearch
+    access: proxy
+    url: http://elasticsearch:9200
+    database: log-anomalies
+    basicAuth: false
+    isDefault: true
+    version: 1
+    jsonData:
+      esVersion: 800
+      timeField: event_timestamp 
+      maxConcurrentShardRequests: 5
+    readOnly: false

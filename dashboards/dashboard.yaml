@@ -1,0 +1,12 @@
+# dashboards/dashboard.yaml
+apiVersion: 1
+
+providers:
+  - name: "Log Anomaly Dashboard"
+    orgId: 1
+    folder: 'Anomaly Logs' 
+    type: file
+    disableDeletion: true # Set to true to prevent deletion from Grafana UI
+    editable: false        # Set to false if you want dashboards to be read-only in UI
+    options:
+      path: /etc/grafana/provisioning/dashboards # Path inside the container where your dashboard JSONs will be

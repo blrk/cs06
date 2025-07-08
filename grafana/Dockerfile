@@ -21,9 +21,18 @@ RUN wget https://dl.grafana.com/oss/release/grafana-${GRAFANA_VERSION}.linux-amd
 RUN mkdir -p /var/lib/grafana /var/log/grafana && \
     chown -R grafana:grafana ${GRAFANA_HOME} /var/lib/grafana /var/log/grafana
 
+# --- NEW LINES ADDED HERE TO COPY GRAFANA.INI INTO THE IMAGE ---
+# Create the Grafana configuration directory inside the image
+RUN mkdir -p ${GRAFANA_HOME}/conf/
+# Copy your custom grafana.ini from your build context into the image
+# It's assumed grafana.ini is in the same directory as this Dockerfile (./grafana/)
+COPY grafana.ini ${GRAFANA_HOME}/conf/grafana.ini
+# --- END NEW LINES ---
+
 # Switch to Grafana user
 USER grafana
 WORKDIR ${GRAFANA_HOME}
 EXPOSE 3000
 
-ENTRYPOINT ["./bin/grafana-server", "--homepath=/usr/share/grafana"]
+# --- UPDATED ENTRYPOINT: Explicitly specify the config file ---
+ENTRYPOINT ["./bin/grafana-server", "--homepath=/usr/share/grafana", "--config=/usr/share/grafana/conf/grafana.ini"]

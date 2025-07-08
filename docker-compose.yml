@@ -87,9 +87,10 @@ services:
     volumes:
       - esdata:/opt/elasticsearch/data
       - eslogs:/opt/elasticsearch/logs
+      - ./elastic-search/init.sh:/usr/local/bin/init.sh # Mount the init script
     networks:
       - kafka-net
-  
+    command: ["bash", "-c", "/usr/local/bin/docker-entrypoint.sh && /usr/local/bin/init.sh"]
   grafana:
     build: ./grafana
     container_name: grafana
@@ -97,9 +98,14 @@ services:
       - "3000:3000"
     volumes:
       - grafana-storage:/var/lib/grafana
-      - ./datasource.yaml:/usr/share/grafana/conf/provisioning/datasources/datasource.yaml
+      # ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./datasource/datasource.yaml:/etc/grafana/provisioning/datasources/datasource.yaml
+      - ./dashboards/:/etc/grafana/provisioning/dashboards/
+    environment: 
+      #- GF_PATHS_CONFIG=/etc/grafana/grafana.ini # Explicitly tell Grafana to use your custom ini
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning # Explicitly tell Grafana where provisioning files are
     depends_on:
-      - elasticsearch
+      - elasticsearch # Grafana needs Elasticsearch to be up
     networks:
       - kafka-net
 
