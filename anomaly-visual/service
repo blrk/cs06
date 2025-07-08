@@ -1,0 +1,14 @@
+services:
+  # Flask visualization app
+  anomaly-visualizer:
+    build: 
+      context: ./anomaly-visual
+    ports:
+      - "5000:5000"
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - monitoring
